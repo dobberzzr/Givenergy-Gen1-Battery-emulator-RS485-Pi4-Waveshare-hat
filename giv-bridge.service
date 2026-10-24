@@ -1,0 +1,40 @@
+[Unit]
+Description=DATOUBOSS JBD BMS to GivEnergy Gen 1 inverter gateway
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/giv-bridge/giv_bridge.py
+Environment=GIV_BRIDGE_CONF=/etc/giv-bridge.conf
+Environment=PYTHONUNBUFFERED=1
+
+# The inverter side must keep answering whether or not MQTT or the network is up,
+# so there is deliberately no Wants=network-online.target here.
+Restart=always
+RestartSec=5
+
+# Primary group must stay 'giv' so the config (root:giv 640) is readable;
+# serial access comes from the supplementary group (see the Group= note in
+# pace-mqtt.service).
+User=giv
+Group=giv
+SupplementaryGroups=dialout
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+DevicePolicy=closed
+DeviceAllow=/dev/ttySC0 rw
+DeviceAllow=/dev/ttySC1 rw
+
+[Install]
+WantedBy=multi-user.target

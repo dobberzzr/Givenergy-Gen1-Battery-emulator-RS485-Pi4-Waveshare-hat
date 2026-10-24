@@ -1,0 +1,41 @@
+# /etc/giv-bridge.conf  -  install with:
+#   sudo install -m 640 -o root -g giv giv-bridge.conf.example /etc/giv-bridge.conf
+# The section name stays [jbd-mqtt] because giv_bridge.py reuses jbd_mqtt.py's loader.
+# Copy mqtt_host / mqtt_username / mqtt_password from the Pi Zero's /etc/jbd-mqtt.conf.
+[jbd-mqtt]
+mqtt_host = 192.168.1.199
+mqtt_port = 1883
+mqtt_username = CHANGE_ME
+mqtt_password = CHANGE_ME
+
+# Same topic and device id as the Pi Zero, so Home Assistant sees one device.
+# Stop jbd-mqtt on the Zero BEFORE starting this, or both publish to these topics.
+topic_prefix = jbd/datouboss
+device_id = datouboss_jbd
+device_name = DATOUBOSS Battery (JBD)
+expire_after = 60
+
+baud = 9600
+# Waveshare RS485 CAN HAT (B): ttySC0 = battery (JBD BMS), ttySC1 = inverter (the Gen 1
+# BMS port). Swap them if your wiring is the other way round.
+battery_port = /dev/ttySC0
+inverter_port = /dev/ttySC1
+
+# How often the BMS is polled, and how often MQTT is published (seconds).
+gw_poll_interval = 1.0
+gw_mqtt_interval = 5.0
+
+# --- What the inverter is told.  Values marked ESTIMATE are not from a datasheet. ---
+# HR25 while healthy, amps (ESTIMATE; the Gen 1 tops out near 50 A, the pack is 157 A).
+limit_a = 100
+# Pack limits read off the BMS screen: max charge 56.8 V, max discharge 44.8 V.
+pack_ov_trip_v = 56.8
+pack_ov_recover_v = 55.2
+pack_uv_trip_v = 44.8
+pack_uv_recover_v = 46.4
+# Per-cell backstops ahead of the BMS's own trip (ESTIMATE; 3.55 V is the screen's
+# 56.8 V / 16, 2.90 V is a little above the screen's 44.8 V / 16 = 2.80 V).
+cell_ov_trip_v = 3.55
+cell_ov_recover_v = 3.45
+cell_uv_trip_v = 2.90
+cell_uv_recover_v = 3.05
