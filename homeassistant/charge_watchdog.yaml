@@ -1,0 +1,95 @@
+# Battery charge watchdog (Home Assistant automation)
+#
+# Alerts when the battery sits at ~0 W for 10 minutes during cheap rate with the charge
+# schedule on and SoC below 95%, and (23:30-05:30 only) restarts the inverter to clear
+# the Gen 1's night-time standby. See "Known Gen 1 behaviour" in the README.
+#
+# Install: Settings > Automations & Scenes > Create automation > three-dot menu >
+# Edit in YAML, paste this, save. Test with "Run actions" outside 23:30-05:30: you
+# should get the alert with real numbers in it, and no inverter restart.
+#
+# BEFORE YOU USE IT, replace these placeholders with your own entity IDs
+# (Developer Tools > States, search by name):
+#   INVERTER_SERIAL                lower-case inverter serial, as GivTCP puts it in entity IDs
+#   METERSERIAL_MPAN               your Octopus meter serial and MPAN in the off-peak sensor ID
+#   notify.mobile_app_YOUR_PHONE   your phone's notify service
+# em20260001 is the gateway's fixed battery serial, so leave it as it is.
+
+alias: Battery charge watchdog
+description: >-
+  Cheap rate on, charge schedule on, battery below 95% but battery power has sat
+  at ~0 W for 10 minutes: alert, and during the main 23:30-05:30 slot restart
+  the inverter. Re-checks 10 minutes after the restart.
+mode: single
+max_exceeded: silent
+triggers:
+  - trigger: numeric_state
+    entity_id:
+      - sensor.energy_battery_givtcp_INVERTER_SERIAL_power_givtcp_discharge_power_givtcp_INVERTER_SERIAL_power_givtcp_charge_power_net_power
+    above: -50
+    below: 50
+    for: "00:10:00"
+conditions:
+  - condition: state
+    entity_id: binary_sensor.octopus_energy_electricity_METERSERIAL_MPAN_off_peak
+    state:
+      - "on"
+  - condition: state
+    entity_id: switch.givtcp_INVERTER_SERIAL_control_givtcp_enable_charge_schedule
+    state:
+      - "on"
+  - condition: numeric_state
+    entity_id: sensor.givtcp_em20260001_battery_details_givtcp_em20260001_battery_soc
+    below: 95
+actions:
+  - action: notify.mobile_app_YOUR_PHONE
+    data:
+      title: Battery not charging
+      message: >-
+        Cheap rate is on but the battery has been at
+        {{ states('sensor.energy_battery_givtcp_INVERTER_SERIAL_power_givtcp_discharge_power_givtcp_INVERTER_SERIAL_power_givtcp_charge_power_net_power') }} W
+        for 10 minutes
+        (SoC {{ states('sensor.givtcp_em20260001_battery_details_givtcp_em20260001_battery_soc') }}%).
+  # Only restart the inverter automatically in the main overnight slot.
+  # Octopus extra dispatches can be on while the inverter's own charge slot
+  # is not, so outside 23:30-05:30 this just alerts.
+  - if:
+      - condition: time
+        after: "23:30:00"
+        before: "05:30:00"
+    then:
+      - action: switch.turn_on
+        target:
+          entity_id: switch.givtcp_INVERTER_SERIAL_control_givtcp_reboot_invertor
+        data: {}
+      - action: notify.mobile_app_YOUR_PHONE
+        data:
+          title: Inverter restarted
+          message: >-
+            Restarted the inverter to clear standby. Checking again in 10
+            minutes.
+      - delay: "00:10:00"
+      - if:
+          - condition: numeric_state
+            entity_id: sensor.energy_battery_givtcp_INVERTER_SERIAL_power_givtcp_discharge_power_givtcp_INVERTER_SERIAL_power_givtcp_charge_power_net_power
+            above: -50
+            below: 50
+        then:
+          - action: notify.mobile_app_YOUR_PHONE
+            data:
+              title: Still not charging after restart
+              message: >-
+                Battery power is still
+                {{ states('sensor.energy_battery_givtcp_INVERTER_SERIAL_power_givtcp_discharge_power_givtcp_INVERTER_SERIAL_power_givtcp_charge_power_net_power') }} W.
+                Check the emulator: http://192.168.1.83/health
+        else:
+          - action: notify.mobile_app_YOUR_PHONE
+            data:
+              title: Charging resumed
+              message: >-
+                Battery now at
+                {{ states('sensor.energy_battery_givtcp_INVERTER_SERIAL_power_givtcp_discharge_power_givtcp_INVERTER_SERIAL_power_givtcp_charge_power_net_power') }} W
+                after the restart.
+  # Hold the run for 30 minutes so a slow recovery can't trigger a second
+  # restart straight away (mode: single ignores triggers while running).
+  - delay: "00:30:00"
