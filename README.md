@@ -36,6 +36,7 @@ now retired) and a separate Pi Zero MQTT bridge, and runs on the author's own sy
 - [How it works](#how-it-works) · [What the inverter is told](#what-the-inverter-is-told)
 - [Home Assistant](#home-assistant) · [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting) · [Known Gen 1 behaviour](#known-gen-1-behaviour)
+- [What stops discharge](#gen-1-settings-what-stops-discharge) · [When the BMS's SoC is wrong](#when-the-bmss-soc-is-wrong) · [Protection thresholds](#protection-thresholds)
 - [Repository layout](#repository-layout) · [Licence](#licence)
 
 ## Features
@@ -244,6 +245,51 @@ rate, with the charge schedule on and SoC below 95 %, it alerts your phone when 
 battery has idled at about 0 W for 10 minutes. Between 23:30 and 05:30 it also restarts
 the inverter, then reports whether charging resumed. Replace the placeholders at the top
 of the file with your own entity IDs before using it.
+
+## Gen 1 settings: what stops discharge
+
+On the author's Gen 1, Eco-mode discharge stops at the inverter's **battery cutoff
+(HR114)**. The *reserve* (HR110) does not: with the reserve at 20 % and the SoC at 14 %
+the battery kept discharging, and raising HR114 to 15 stopped it at once. This was
+observed on one inverter, so check yours before relying on it.
+
+The cutoff is compared with the SoC the **BMS reports**, so it is only as good as that
+number.
+
+## When the BMS's SoC is wrong
+
+Seen once, on 26 Oct 2026: this pack's BMS stopped counting at 15 % (48.66 Ah) while
+about 20 Ah left the pack. The SoC sat frozen at 15 % for over an hour. It counted again
+after a charge, but stayed about 6 points too high, because the gateway passes the BMS's
+SoC straight through and the inverter's cutoff then acted at a lower real level than set.
+
+To check, compare `remaining` Ah with the Ah that actually flowed (add up the pack
+current over a few minutes): they should agree. Whether a full charge re-syncs the BMS
+has not been confirmed yet. Cell voltages are a weak guide on LFP, because the curve is
+flat for most of the range.
+
+## Protection thresholds
+
+BMS limits as listed for the DATOUBOSS pack this was built for, next to what the gateway
+does. The gateway acts ahead of the BMS on pack voltage, so the inverter is told "full" or
+"empty" before the BMS would cut the battery off. Whenever any HR20 bit is set, HR25 is
+also dropped to 0.
+
+| Protection | BMS trip / recover | Gateway | HR20 bit |
+|---|---|---|---|
+| Pack over-voltage | 58.4 V / 54.0 V | latch 56.8 V / 55.2 V (acts first), plus the BMS flag | 2 |
+| Pack under-voltage | 43.2 V / 46.4 V | latch 44.8 V / 46.4 V (acts first), plus the BMS flag | 3 |
+| Cell over / under-voltage | BMS flags | latches 3.55 V / 3.45 V and 2.90 V / 3.05 V (`ESTIMATE`) | 2 / 3 |
+| Charge high temperature | 55 °C / 50 °C | BMS flag only | 5 |
+| Charge low temperature | 0 °C / 5 °C | latch on the coolest sensor, same point as the BMS, plus the BMS flag | 7 |
+| Discharge high temperature | 55 °C / 50 °C | BMS flag only | 4 |
+| Discharge low temperature | -20 °C / -15 °C | BMS flag only | 6 |
+| Over-current, charge and discharge | 215 A | BMS flag only | 0 |
+| Short circuit | BMS flag | BMS flag only | 1 |
+| Charge / discharge FET switched off | n/a | treated as full / empty | 2 / 3 |
+
+Code comments mention "157 A continuous": that is the pack's rating, and 215 A is the
+BMS's over-current trip. The Gen 1 itself tops out near 50 A.
 
 ## Repository layout
 
